@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2026-10-15
+
+### Bug Fixes
+
+- Correcteed artifact upload from test behaviour
+- Ensure that every call is now ignored if the circuit opened or closed whileit was running
+
+### Miscellaneous Tasks
+
+- Bumped deps
+
+### Security
+
+- Skip dependabot deps-dev commits and match security in any case
+
+### Testing
+
+- Added regression test case to ensure that symmetric cases are handled
+
 ## [1.0.1] - 2026-08-22
 
 ### Bug Fixes
