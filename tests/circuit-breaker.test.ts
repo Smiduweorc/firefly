@@ -297,3 +297,47 @@ test("one failed probe reopens the circuit and the rest cannot close it", async 
 	assert.equal(breaker.state, "open");
 	assert.equal(breaker.failures, 0);
 });
+
+test("opens once when more calls fail together than the threshold", async () => {
+	const clock = new VirtualClock();
+	const events: FireflyEvent[] = [];
+	const breaker = new CircuitBreaker({
+		threshold: 3,
+		resetAfter: 1_000,
+		clock,
+		onEvent: (event) => events.push(event),
+	});
+
+	const held = deferred<string>();
+	const calls = Array.from({ length: 6 }, () =>
+		breaker.policy(async () => held.promise)()
+	);
+
+	await clock.advance(400);
+	held.reject(new Error("down"));
+	await Promise.allSettled(calls);
+
+	const opened = events.filter((event) => event.type === "circuit-open");
+	assert.equal(opened.length, 1);
+	assert.equal(breaker.failures, 0);
+
+	// The stragglers did not restart the timer.
+	await clock.advance(1_000);
+	assert.equal(breaker.state, "half-open");
+});
+
+test("a success admitted before the circuit opened does not touch the new state", async () => {
+	const clock = new VirtualClock();
+	const breaker = new CircuitBreaker({ threshold: 2, resetAfter: 1_000, clock });
+
+	const slow = deferred<string>();
+	const lingering = breaker.policy(async () => slow.promise)();
+	await assert.rejects(breaker.policy(failing(new Error("down")))());
+	await assert.rejects(breaker.policy(failing(new Error("down")))());
+	assert.equal(breaker.state, "open");
+
+	slow.resolve("ok");
+	await lingering;
+
+	assert.equal(breaker.state, "open");
+});
