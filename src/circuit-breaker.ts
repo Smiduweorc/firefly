@@ -232,15 +232,17 @@ export class CircuitBreaker {
 	}
 
 	#succeeded(admission: Admission, elapsed: number, signal: AbortSignal): void {
+		// The circuit opened or reopened while this call was in flight, so its
+		// answer is about a state that no longer exists. For a probe that is the
+		// outage before last; for an ordinary call it is the closed period that
+		// has already been judged.
+		if (admission.generation !== this.#generation) {
+			return;
+		}
+
 		this.#failures = 0;
 
 		if (admission.trial) {
-			// The circuit reopened while this probe was in flight, so its answer
-			// is about the outage before last.
-			if (admission.generation !== this.#generation) {
-				return;
-			}
-
 			this.#trials--;
 			this.#passed++;
 
@@ -273,10 +275,15 @@ export class CircuitBreaker {
 			return;
 		}
 
+		// Same as a stale success: six calls in flight against a threshold of
+		// three must open the circuit once, not open it and then reopen it, with
+		// a second event and a restarted timer, on the stragglers.
+		if (admission.generation !== this.#generation) {
+			return;
+		}
+
 		if (admission.trial) {
-			if (admission.generation === this.#generation) {
-				this.#open(error, signal);
-			}
+			this.#open(error, signal);
 			return;
 		}
 
