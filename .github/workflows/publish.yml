@@ -1,0 +1,89 @@
+name: Publish
+
+# Stages a tag cut by release.sh on npm; it goes live once approved with
+# 2FA. Manual only: run it from the
+# Actions tab (or `gh workflow run publish.yml -f tag=vX.Y.Z`) after
+# `git push && git push --tags`.
+#
+# Auth is npm trusted publishing (OIDC), so there is no NPM_TOKEN secret.
+# Approve on npmjs.com or with `npm stage list` + `npm stage approve <id>`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish, e.g. v1.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing
+
+# Never publish the same package twice at once.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    # Gate with required reviewers under Settings > Environments > npm.
+    environment: npm
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] \
+            || { echo "::error::'$TAG' is not vX.Y.Z"; exit 1; }
+          version="$(node -p "require('./package.json').version")"
+          [ "v$version" = "$TAG" ] \
+            || { echo "::error::package.json is $version, tag is $TAG"; exit 1; }
+          # Only publish what has landed on the default branch.
+          git merge-base --is-ancestor HEAD "origin/${{ github.event.repository.default_branch }}" \
+            || { echo "::error::$TAG is not on ${{ github.event.repository.default_branch }}"; exit 1; }
+
+      # Node 24 ships npm 11, which trusted publishing needs (>= 11.5.1).
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Prereleases (v1.2.0-rc.1) are staged under "next" so `npm i <pkg>` never picks them.
+      - name: Stage publish (approve with 2FA on npm)
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$TAG" == *-* ]]; then
+            npm stage publish --provenance --tag next
+          else
+            npm stage publish --provenance
+          fi

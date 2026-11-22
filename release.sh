@@ -56,3 +56,4 @@ changelog="$(npx git-cliff --config cliff.toml --unreleased --strip all)"
 git tag -a "$tag" -m "Release $tag" -m "$changelog"
 
 echo "Tagged $tag. Push with: git push && git push --tags"
+echo "Then stage it: gh workflow run publish.yml -f tag=$tag, and approve on npmjs.com with 2FA"
