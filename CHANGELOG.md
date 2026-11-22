@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.4] - 2026-11-22
+
+### Miscellaneous Tasks
+
+- Add manually started staged npm publish workflow
+
 ## [1.0.3] - 2026-11-08
 
 ### Documentation
